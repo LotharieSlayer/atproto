@@ -1,5 +1,11 @@
 # @atproto/pds
 
+## 0.4.209
+
+### Patch Changes
+
+- [#4616](https://github.com/bluesky-social/atproto/pull/4616) [`8711f6e`](https://github.com/bluesky-social/atproto/commit/8711f6e1b870d27080a4cb7e56e58bf538ab5778) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Force `getBlob` to trigger a browser download
+
 ## 0.4.208
 
 ### Patch Changes
