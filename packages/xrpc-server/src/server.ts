@@ -46,7 +46,12 @@ import {
   HandlerContext,
   Input,
   LexMethodConfig,
+  LexMethodHandler,
+  LexMethodInput,
+  LexMethodOutput,
+  LexMethodParams,
   LexSubscriptionConfig,
+  LexSubscriptionHandler,
   MethodAuthContext,
   MethodConfig,
   MethodConfigOrHandler,
@@ -139,27 +144,31 @@ export class Server {
     config: M extends l.Procedure | l.Query
       ? LexMethodConfig<M, A> & { auth: Exclude<unknown, void> }
       : M extends l.Subscription
-        ? Required<LexSubscriptionConfig<M, A>>
+        ? LexSubscriptionConfig<M, A> & { auth: Exclude<unknown, void> }
         : never,
   ): void
   // Routes without auth
   add<M extends l.Procedure | l.Query | l.Subscription>(
     ns: l.Main<M>,
     config: M extends l.Procedure | l.Query
-      ? LexMethodConfig<M, void>
+      ? LexMethodConfig<M, void> | LexMethodHandler<M, void>
       : M extends l.Subscription
-        ? LexSubscriptionConfig<M, void>
+        ? LexSubscriptionConfig<M, void> | LexSubscriptionHandler<M, void>
         : never,
   ): void
   add<M extends l.Procedure | l.Query | l.Subscription, A extends Auth>(
     ns: l.Main<M>,
-    config: M extends l.Procedure | l.Query
-      ? LexMethodConfig<M, A>
+    configOfHandler: M extends l.Procedure | l.Query
+      ? LexMethodConfig<M, A> | LexMethodHandler<M, A>
       : M extends l.Subscription
-        ? LexSubscriptionConfig<M, A>
+        ? LexSubscriptionConfig<M, A> | LexSubscriptionHandler<M, A>
         : never,
   ): void {
     const schema = l.getMain(ns)
+    const config =
+      typeof configOfHandler === 'function'
+        ? { handler: configOfHandler }
+        : configOfHandler
     switch (schema.type) {
       case 'procedure':
         return this.addProcedureSchema(
@@ -189,9 +198,9 @@ export class Server {
       `/xrpc/${schema.nsid}`,
       this.createHandlerInternal<
         A,
-        l.InferMethodParams<M>,
-        l.InferMethodInput<M, Readable>,
-        l.InferMethodOutput<M, Readable>
+        LexMethodParams<M>,
+        LexMethodInput<M>,
+        LexMethodOutput<M>
       >(
         this.createAuthVerifier(config),
         this.createSchemaParamsVerifier(schema),
@@ -211,9 +220,9 @@ export class Server {
       `/xrpc/${schema.nsid}`,
       this.createHandlerInternal<
         A,
-        l.InferMethodParams<M>,
-        l.InferMethodInput<M, Readable>,
-        l.InferMethodOutput<M, Readable>
+        LexMethodParams<M>,
+        LexMethodInput<M>,
+        LexMethodOutput<M>
       >(
         this.createAuthVerifier(config),
         this.createSchemaParamsVerifier(schema),
@@ -602,14 +611,14 @@ export class Server {
 
   private createSchemaParamsVerifier<
     M extends l.Procedure | l.Query | l.Subscription,
-  >(ns: l.Main<M>): ParamsVerifierInternal<l.InferMethodParams<M>> {
+  >(ns: l.Main<M>): ParamsVerifierInternal<LexMethodParams<M>> {
     return createSchemaParamsVerifier<M>(ns)
   }
 
   private createSchemaInputVerifier<M extends l.Procedure | l.Query>(
     ns: l.Main<M>,
     opts?: RouteOptions,
-  ): InputVerifierInternal<l.InferMethodInput<M, Readable>> {
+  ): InputVerifierInternal<LexMethodInput<M>> {
     return createSchemaInputVerifier<M>(ns, {
       blobLimit: opts?.blobLimit ?? this.options.payload?.blobLimit,
       jsonLimit: opts?.jsonLimit ?? this.options.payload?.jsonLimit,
@@ -619,7 +628,7 @@ export class Server {
 
   private createSchemaOutputVerifier<M extends l.Procedure | l.Query>(
     ns: l.Main<M>,
-  ): null | OutputVerifierInternal<l.InferMethodOutput<M, Readable>> {
+  ): null | OutputVerifierInternal<LexMethodOutput<M>> {
     if (this.options.validateResponse === false) {
       return null
     }

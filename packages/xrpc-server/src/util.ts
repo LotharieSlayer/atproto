@@ -28,6 +28,9 @@ import {
 import {
   Auth,
   Input,
+  LexMethodInput,
+  LexMethodOutput,
+  LexMethodParams,
   Output,
   Params,
   RouteOptions,
@@ -165,12 +168,12 @@ export function createLexiconParamsVerifier<P extends Params = Params>(
 
 export function createSchemaParamsVerifier<
   M extends l.Procedure | l.Query | l.Subscription,
->(ns: l.Main<M>): ParamsVerifierInternal<l.InferMethodParams<M>> {
+>(ns: l.Main<M>): ParamsVerifierInternal<LexMethodParams<M>> {
   const schema = l.getMain(ns)
   return (req) => {
     try {
       const queryParams = getQueryParams(req)
-      return schema.parameters.parse(queryParams) as l.InferMethodParams<M>
+      return schema.parameters.parse(queryParams) as LexMethodParams<M>
     } catch (err) {
       throw new InvalidRequestError(String(err))
     }
@@ -250,7 +253,7 @@ export function createLexiconInputVerifier<I extends Input = Input>(
 export function createSchemaInputVerifier<M extends l.Procedure | l.Query>(
   ns: l.Main<M>,
   options: RouteOptions,
-): InputVerifierInternal<l.InferMethodInput<M, Readable>> {
+): InputVerifierInternal<LexMethodInput<M>> {
   const schema = l.getMain(ns)
   const { blobLimit } = options
 
@@ -266,7 +269,7 @@ export function createSchemaInputVerifier<M extends l.Procedure | l.Query>(
         )
       }
 
-      return undefined as l.InferMethodInput<M, Readable>
+      return undefined as LexMethodInput<M>
     }
   }
 
@@ -309,7 +312,7 @@ export function createSchemaInputVerifier<M extends l.Procedure | l.Query>(
     // otherwise, we pass along a decoded readable stream
     const body = req.readableEnded ? req.body : decodeBodyStream(req, blobLimit)
 
-    return { encoding: reqEncoding, body } as l.InferMethodInput<M, Readable>
+    return { encoding: reqEncoding, body } as LexMethodInput<M>
   }
 }
 
@@ -373,7 +376,7 @@ export function createLexiconOutputVerifier<O extends Output = Output>(
 
 export function createSchemaOutputVerifier<M extends l.Procedure | l.Query>(
   ns: l.Main<M>,
-): OutputVerifierInternal<l.InferMethodOutput<M, Readable>> {
+): OutputVerifierInternal<LexMethodOutput<M>> {
   const outputSchema = l.getMain(ns).output
   return (handlerOutput) => {
     if (!outputSchema.matchesEncoding(handlerOutput?.encoding)) {

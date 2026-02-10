@@ -223,20 +223,42 @@ export type StreamAuthContext<P extends Params = Params> = {
   req: IncomingMessage
 }
 
+export type LexMethodParams<M extends l.Procedure | l.Query | l.Subscription> =
+  l.InferMethodParams<M>
+
+export type LexMethodInput<M extends l.Procedure | l.Query> =
+  l.InferMethodInput<M, Readable>
+
+export type LexMethodOutput<M extends l.Procedure | l.Query> =
+  l.InferMethodOutput<M, Readable> extends undefined
+    ? l.InferMethodOutput<M, Readable> | void
+    : l.InferMethodOutput<M, Readable>
+
+export type LexMethodMessage<M extends l.Subscription> = l.InferMethodMessage<M>
+
+export type LexMethodHandler<
+  M extends l.Procedure | l.Query,
+  A extends Auth = Auth,
+> = MethodHandler<A, LexMethodParams<M>, LexMethodInput<M>, LexMethodOutput<M>>
+
 export type LexMethodConfig<
   M extends l.Procedure | l.Query,
   A extends Auth = Auth,
-> = MethodConfig<
-  A,
-  l.InferMethodParams<M>,
-  l.InferMethodInput<M, Readable>,
-  l.InferMethodOutput<M, Readable>
+> = MethodConfig<A, LexMethodParams<M>, LexMethodInput<M>, LexMethodOutput<M>>
+
+export type LexSubscriptionHandler<
+  M extends l.Subscription,
+  A extends Auth = Auth,
+> = StreamHandler<
+  Extract<A, AuthResult>,
+  LexMethodParams<M>,
+  LexMethodMessage<M>
 >
 
 export type LexSubscriptionConfig<
   M extends l.Subscription,
   A extends Auth = Auth,
-> = StreamConfig<A, l.InferMethodParams<M>, l.InferMethodMessage<M>>
+> = StreamConfig<A, LexMethodParams<M>, LexMethodMessage<M>>
 
 export type StreamAuthVerifier<
   A extends AuthResult = AuthResult,

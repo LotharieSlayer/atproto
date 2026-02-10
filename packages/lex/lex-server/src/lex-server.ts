@@ -676,7 +676,9 @@ export class LexRouter {
 
       try {
         const url = new URL(request.url)
-        const params = method.parameters.fromURLSearchParams(url.searchParams)
+        const params = method.parameters.fromURLSearchParams(
+          url.searchParams,
+        ) as InferMethodParams<Method>
 
         const credentials = auth
           ? await auth({ method, params, request, connection })
@@ -798,7 +800,7 @@ export class LexRouter {
             const url = new URL(request.url)
             const params = method.parameters.fromURLSearchParams(
               url.searchParams,
-            )
+            ) as InferMethodParams<Method>
 
             const credentials: Credentials = auth
               ? await auth({ method, params, request, connection })
@@ -1010,7 +1012,8 @@ async function getQueryInput<M extends Query>(
   if (
     request.body ||
     request.headers.has('content-type') ||
-    request.headers.has('content-length')
+    (request.headers.has('content-length') &&
+      request.headers.get('content-length') !== '0')
   ) {
     throw new LexError('InvalidRequest', 'GET requests must not have a body')
   }
