@@ -36,7 +36,7 @@ export class TestFeedGen {
 
     lexServer.add(app.bsky.feed.describeFeedGenerator, async () => {
       return {
-        encoding: 'application/json',
+        encoding: 'application/json' as const,
         body: {
           did: did as DidString,
           feeds: (Object.keys(feeds) as AtUriString[]).map((uri) => ({
