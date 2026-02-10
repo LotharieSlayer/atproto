@@ -1,7 +1,6 @@
 import { DuplexOptions } from 'node:stream'
 import { WebSocket, createWebSocketStream } from 'ws'
-import { ResponseType } from '@atproto/xrpc'
-import { XRPCError } from '../errors'
+import { ResponseType, XRPCError } from '@atproto/xrpc'
 import { Frame, MessageFrame } from './frames'
 
 export function streamByteChunks(ws: WebSocket, options?: DuplexOptions) {
@@ -32,8 +31,12 @@ export function ensureChunkIsMessage(chunk: Uint8Array): MessageFrame {
     return frame
   } else if (frame.isError()) {
     const type = ResponseType[frame.code] ?? ResponseType.UpstreamFailure
-    throw new XRPCError(type, frame.message, frame.code)
+    throw new XRPCError(type, frame.code, frame.message)
   } else {
-    throw new XRPCError(ResponseType.InvalidResponse, 'Unknown frame type')
+    throw new XRPCError(
+      ResponseType.InvalidResponse,
+      undefined,
+      'Unknown frame type',
+    )
   }
 }

@@ -1,9 +1,15 @@
 import assert from 'node:assert'
 import { IncomingMessage, OutgoingMessage } from 'node:http'
 import { Duplex, Readable, pipeline } from 'node:stream'
-import { Request, Response, json, text } from 'express'
+import {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+  json,
+  text,
+} from 'express'
 import { contentType } from 'mime-types'
 import { MaxSizeChecker, createDecoders } from '@atproto/common'
+import { l } from '@atproto/lex-schema'
 import {
   LexXrpcBody,
   LexXrpcProcedure,
@@ -13,16 +19,38 @@ import {
   jsonToLex,
 } from '@atproto/lexicon'
 import { ResponseType } from '@atproto/xrpc'
-import { InternalServerError, InvalidRequestError, XRPCError } from './errors'
 import {
-  Awaitable,
-  HandlerSuccess,
+  ErrorResult,
+  InternalServerError,
+  InvalidRequestError,
+  XRPCError,
+} from './errors'
+import {
+  Auth,
   Input,
+  Output,
   Params,
   RouteOptions,
   UndecodedParams,
   handlerSuccess,
 } from './types'
+
+export type ParamsVerifierInternal<P extends Params = Params> = (
+  req: IncomingMessage | ExpressRequest,
+) => P
+
+export type AuthVerifierInternal<C, A extends Auth = Auth> = (
+  ctx: C,
+) => Promise<Exclude<A, ErrorResult>>
+
+export type InputVerifierInternal<I extends Input = Input> = (
+  req: ExpressRequest,
+  res: ExpressResponse,
+) => Promise<I>
+
+export type OutputVerifierInternal<O extends Output = Output> = (
+  handleOutput: Exclude<O, ErrorResult>,
+) => void
 
 export const asArray = <T>(arr: T | T[]): T[] =>
   Array.isArray(arr) ? arr : [arr]
@@ -38,7 +66,7 @@ export function setHeaders(
   }
 }
 
-export function decodeQueryParams(
+function decodeQueryParams(
   def: LexXrpcProcedure | LexXrpcQuery | LexXrpcSubscription,
   params: UndecodedParams,
 ): Params {
@@ -81,7 +109,9 @@ export function decodeQueryParam(
   }
 }
 
-export function getSearchParams(url = ''): URLSearchParams | undefined {
+export function getSearchParams(url?: string): URLSearchParams | undefined {
+  if (!url) return undefined
+
   const queryStringIdx = url.indexOf('?')
   if (queryStringIdx === -1) return undefined
 
@@ -91,11 +121,14 @@ export function getSearchParams(url = ''): URLSearchParams | undefined {
   return new URLSearchParams(queryString)
 }
 
-export type QueryParams = Record<string, undefined | string | string[]>
-export function getQueryParams(url = ''): QueryParams {
-  const result: QueryParams = Object.create(null)
+export function getQueryParams(
+  req: IncomingMessage | ExpressRequest,
+): UndecodedParams {
+  if ('query' in req) return req.query
 
-  const searchParams = getSearchParams(url)
+  const result: UndecodedParams = Object.create(null)
+
+  const searchParams = getSearchParams(req.url)
   if (!searchParams) return result
 
   if (searchParams.has('__proto__')) {
@@ -114,14 +147,44 @@ export function getQueryParams(url = ''): QueryParams {
   return result
 }
 
-export function createInputVerifier(
+export function createLexiconParamsVerifier<P extends Params = Params>(
+  nsid: string,
+  def: LexXrpcQuery | LexXrpcProcedure | LexXrpcSubscription,
+  lexicons: Lexicons,
+): ParamsVerifierInternal<P> {
+  return (req) => {
+    try {
+      const queryParams = getQueryParams(req)
+      const params = decodeQueryParams(def, queryParams)
+      return lexicons.assertValidXrpcParams(nsid, params) as P
+    } catch (e) {
+      throw new InvalidRequestError(String(e))
+    }
+  }
+}
+
+export function createSchemaParamsVerifier<
+  M extends l.Procedure | l.Query | l.Subscription,
+>(ns: l.Main<M>): ParamsVerifierInternal<l.InferMethodParams<M>> {
+  const schema = l.getMain(ns)
+  return (req) => {
+    try {
+      const queryParams = getQueryParams(req)
+      return schema.parameters.parse(queryParams) as l.InferMethodParams<M>
+    } catch (err) {
+      throw new InvalidRequestError(String(err))
+    }
+  }
+}
+
+export function createLexiconInputVerifier<I extends Input = Input>(
   nsid: string,
   def: LexXrpcProcedure | LexXrpcQuery,
   options: RouteOptions,
   lexicons: Lexicons,
-): (req: Request, res: Response) => Awaitable<Input> {
+): InputVerifierInternal<I> {
   if (def.type === 'query' || !def.input) {
-    return (req) => {
+    return async (req) => {
       // @NOTE We allow (and ignore) "empty" bodies
       if (getBodyPresence(req) === 'present') {
         throw new InvalidRequestError(
@@ -129,7 +192,7 @@ export function createInputVerifier(
         )
       }
 
-      return undefined
+      return undefined as I
     }
   }
 
@@ -167,9 +230,11 @@ export function createInputVerifier(
       try {
         const lexBody = req.body ? jsonToLex(req.body) : req.body
         req.body = lexicons.assertValidXrpcInput(nsid, lexBody)
-      } catch (e) {
+      } catch (cause) {
         throw new InvalidRequestError(
-          e instanceof Error ? e.message : String(e),
+          cause instanceof Error ? cause.message : String(cause),
+          undefined,
+          { cause },
         )
       }
     }
@@ -178,26 +243,104 @@ export function createInputVerifier(
     // otherwise, we pass along a decoded readable stream
     const body = req.readableEnded ? req.body : decodeBodyStream(req, blobLimit)
 
-    return { encoding: reqEncoding, body }
+    return { encoding: reqEncoding, body } as I
   }
 }
 
-export function validateOutput(
+export function createSchemaInputVerifier<M extends l.Procedure | l.Query>(
+  ns: l.Main<M>,
+  options: RouteOptions,
+): InputVerifierInternal<l.InferMethodInput<M, Readable>> {
+  const schema = l.getMain(ns)
+  const { blobLimit } = options
+
+  const input: l.Payload | undefined =
+    'input' in schema ? schema.input : undefined
+
+  if (!input?.encoding) {
+    //
+    return async (req) => {
+      if (getBodyPresence(req) === 'present') {
+        throw new InvalidRequestError(
+          `A request body was provided when none was expected`,
+        )
+      }
+
+      return undefined as l.InferMethodInput<M, Readable>
+    }
+  }
+
+  const bodyParser = createBodyParser(input.encoding, options)
+
+  return async (req, res) => {
+    if (getBodyPresence(req) === 'missing') {
+      throw new InvalidRequestError(
+        `A request body is expected but none was provided`,
+      )
+    }
+
+    const reqEncoding = parseReqEncoding(req)
+    if (!input.matchesEncoding(reqEncoding)) {
+      throw new InvalidRequestError(
+        `Wrong request encoding (Content-Type): ${reqEncoding}`,
+      )
+    }
+
+    if (bodyParser) {
+      await bodyParser(req, res)
+    }
+
+    if (input.schema) {
+      try {
+        req.body = input.schema.parse({
+          encoding: reqEncoding,
+          body: req.body ? jsonToLex(req.body) : req.body,
+        })
+      } catch (cause) {
+        throw new InvalidRequestError(
+          cause instanceof Error ? cause.message : String(cause),
+          undefined,
+          { cause },
+        )
+      }
+    }
+
+    // if middleware already got the body, we pass that along as input
+    // otherwise, we pass along a decoded readable stream
+    const body = req.readableEnded ? req.body : decodeBodyStream(req, blobLimit)
+
+    return { encoding: reqEncoding, body } as l.InferMethodInput<M, Readable>
+  }
+}
+
+export function createLexiconOutputVerifier<O extends Output = Output>(
   nsid: string,
   def: LexXrpcProcedure | LexXrpcQuery,
-  output: HandlerSuccess | void,
   lexicons: Lexicons,
-): void {
-  if (def.output) {
-    // An output is expected
-    if (output === undefined) {
+): OutputVerifierInternal<O> {
+  const outputDef = def.output
+
+  // Expects no output
+  if (!outputDef) {
+    return (handlerOutput) => {
+      if (handlerOutput !== undefined) {
+        throw new InternalServerError(
+          `A response body was provided when none was expected`,
+        )
+      }
+    }
+  }
+
+  // An output is expected
+  return (handlerOutput) => {
+    if (handlerOutput === undefined) {
       throw new InternalServerError(
         `A response body is expected but none was provided`,
       )
     }
 
     // Fool-proofing (should not be necessary due to type system)
-    const result = handlerSuccess.safeParse(output)
+    const result = handlerSuccess.safeParse(handlerOutput)
     if (!result.success) {
       throw new InternalServerError(`Invalid handler output`, undefined, {
         cause: result.error,
@@ -205,27 +348,46 @@ export function validateOutput(
     }
 
     // output mime
-    const { encoding } = output
-    if (!encoding || !isValidEncoding(def.output, encoding)) {
+    const { encoding } = handlerOutput
+    if (!isValidEncoding(outputDef, encoding)) {
       throw new InternalServerError(`Invalid response encoding: ${encoding}`)
     }
 
     // output schema
-    if (def.output.schema) {
-      try {
-        output.body = lexicons.assertValidXrpcOutput(nsid, output.body)
-      } catch (e) {
-        throw new InternalServerError(
-          e instanceof Error ? e.message : String(e),
-        )
-      }
+    try {
+      const result = lexicons.assertValidXrpcOutput(nsid, handlerOutput.body)
+      // @TODO Since the output verifier is typically enabled in dev/tests and
+      // disabled in production, we don't want to assign the (altered) output
+      // back to the handlerOutput object, as this would cause different
+      // behaviors between environments. Instead, we should compare the result
+      // with the original output and throw if they differ (indicating that the
+      // output was mutated during validation, e.g. due to default values).
+      result
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : 'Output body validation failed'
+      throw new InternalServerError(message, undefined, { cause })
     }
-  } else {
-    // Expects no output
-    if (output !== undefined) {
-      throw new InternalServerError(
-        `A response body was provided when none was expected`,
-      )
+  }
+}
+
+export function createSchemaOutputVerifier<M extends l.Procedure | l.Query>(
+  ns: l.Main<M>,
+): OutputVerifierInternal<l.InferMethodOutput<M, Readable>> {
+  const outputSchema = l.getMain(ns).output
+  return (handlerOutput) => {
+    if (!outputSchema.matchesEncoding(handlerOutput?.encoding)) {
+      throw new InternalServerError('Output encoding mismatch')
+    }
+    if (outputSchema.schema) {
+      const result = outputSchema.schema.safeValidate(handlerOutput?.body)
+      if (!result.success) {
+        throw new InternalServerError(result.reason.message, undefined, {
+          cause: result.reason,
+        })
+      }
+    } else if (!outputSchema.encoding && handlerOutput?.body !== undefined) {
+      throw new InternalServerError('Output body not expected')
     }
   }
 }
@@ -257,12 +419,20 @@ function trimString(str: string): string {
   return str.trim()
 }
 
-function isValidEncoding(output: LexXrpcBody, encoding: string) {
+function isValidEncoding(output: LexXrpcBody, encoding?: string) {
+  if (!encoding) return false
+
   const normalized = normalizeMime(encoding)
   if (!normalized) return false
 
   const allowed = parseDefEncoding(output)
-  return allowed.includes(ENCODING_ANY) || allowed.includes(normalized)
+  if (!allowed.length) return false
+
+  return (
+    allowed.includes(ENCODING_ANY) ||
+    allowed.includes(normalized) ||
+    allowed.includes(`${normalized.split('/', 1)[0]}/*`)
+  )
 }
 
 type BodyPresence = 'missing' | 'empty' | 'present'
@@ -283,7 +453,7 @@ function createBodyParser(inputEncoding: string, options: RouteOptions) {
   const jsonParser = json({ limit: jsonLimit })
   const textParser = text({ limit: textLimit })
   // Transform json and text parser middlewares into a single function
-  return (req: Request, res: Response) => {
+  return (req: ExpressRequest, res: ExpressResponse) => {
     return new Promise<void>((resolve, reject) => {
       jsonParser(req, res, (err) => {
         if (err) return reject(XRPCError.fromError(err))
@@ -383,7 +553,7 @@ export interface ServerTiming {
   description?: string
 }
 
-export const parseReqNsid = (req: Request | IncomingMessage) =>
+export const parseReqNsid = (req: ExpressRequest | IncomingMessage) =>
   parseUrlNsid('originalUrl' in req ? req.originalUrl : req.url || '/')
 
 /**
