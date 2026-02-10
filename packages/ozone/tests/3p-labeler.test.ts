@@ -44,7 +44,7 @@ describe('labels from 3p labelers', () => {
     })
 
     thirdPartyAgent = thirdPartyLabeler.getClient()
-    agent = ozone.getClient()
+    agent = ozone.getAgent()
     sc = network.getSeedClient()
     modClient = ozone.getModClient()
     thirdPartyModClient = thirdPartyLabeler.getModClient()

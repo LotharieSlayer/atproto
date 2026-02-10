@@ -18,7 +18,7 @@ describe('thread mutes', () => {
       dbPostgresSchema: 'bsky_thread_mutes',
     })
     sc = network.getSeedClient()
-    agent = network.bsky.getClient()
+    agent = network.bsky.getAgent()
     await usersSeed(sc)
     alice = sc.dids.alice
     bob = sc.dids.bob

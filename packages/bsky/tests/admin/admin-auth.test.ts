@@ -59,7 +59,7 @@ describe('admin auth', () => {
       return origResolve.call(this, did, forceRefresh)
     }
 
-    agent = network.bsky.getClient()
+    agent = network.bsky.getAgent()
     sc = network.getSeedClient()
     await usersSeed(sc)
     await network.processAll()

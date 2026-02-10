@@ -28,7 +28,7 @@ describe('moderation', () => {
       dbPostgresSchema: 'bsky_moderation',
     })
 
-    agent = network.bsky.getClient()
+    agent = network.bsky.getAgent()
     sc = network.getSeedClient()
     await basicSeed(sc)
     await network.processAll()

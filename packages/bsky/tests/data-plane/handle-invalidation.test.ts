@@ -17,7 +17,7 @@ describe('handle invalidation', () => {
     network = await TestNetwork.create({
       dbPostgresSchema: 'bsky_handle_invalidation',
     })
-    agent = network.bsky.getClient()
+    agent = network.bsky.getAgent()
     pdsAgent = network.pds.getAgent()
     sc = network.getSeedClient()
     await usersSeed(sc)

@@ -26,7 +26,7 @@ describe('admin get repo view', () => {
       dbPostgresSchema: 'ozone_admin_get_repo',
     })
     ozone = network.ozone
-    agent = ozone.getClient()
+    agent = ozone.getAgent()
     pdsAgent = network.pds.getAgent()
     sc = network.getSeedClient()
     modClient = ozone.getModClient()
