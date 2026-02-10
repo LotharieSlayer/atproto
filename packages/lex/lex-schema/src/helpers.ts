@@ -26,7 +26,7 @@ export function getMain<T extends object>(ns: Main<T>): T {
  * `ReadableStream`, etc.). This type is a placeholder to represent binary data
  * when not explicitly provided.
  */
-type BinaryData = Restricted<'Binary data'>
+export type BinaryData = Restricted<'Binary data'>
 
 export type InferMethodParams<M extends Query | Procedure | Subscription> =
   M extends Procedure<any, infer TParams, any, any, any>
