@@ -1,6 +1,5 @@
 import { LexValue } from '@atproto/lex-data'
 import { Infer, Schema, Validator } from '../core.js'
-import { MimeMatcher, buildMimeMatcher, extractMimeType } from '../util/mime.js'
 import { ObjectSchema, object } from './object.js'
 
 export type { LexValue }
@@ -94,8 +93,6 @@ export class Payload<
   const TEncoding extends string | undefined = string | undefined,
   const TSchema extends PayloadSchema<TEncoding> = PayloadSchema<TEncoding>,
 > {
-  #mimeMatcher: null | MimeMatcher
-
   constructor(
     readonly encoding: TEncoding,
     readonly schema: TSchema,
@@ -103,8 +100,6 @@ export class Payload<
     if (encoding === undefined && schema !== undefined) {
       throw new TypeError('schema cannot be defined when encoding is undefined')
     }
-
-    this.#mimeMatcher = encoding == null ? null : buildMimeMatcher(encoding)
   }
 
   /**
@@ -112,24 +107,32 @@ export class Payload<
    * encoding.
    */
   matchesEncoding(contentType: string | undefined): boolean {
-    const mimeMatcher = this.#mimeMatcher
+    const { encoding } = this
 
     // Handle undefined cases
-    if (mimeMatcher === null) {
+    if (encoding === undefined) {
       // Expecting no body
-      return contentType === undefined
-    } else if (contentType === undefined) {
+      return contentType == null
+    } else if (contentType == null) {
       // Expecting a body, but got no content-type
       return false
     }
 
-    const mime = extractMimeType(contentType)
-    if (!mime) {
-      // Malformed content-type header
+    if (encoding === '*/*') {
+      return true
+    }
+
+    const mime = contentType?.split(';', 1)[0].trim()
+    if (encoding.endsWith('/*')) {
+      return mime.startsWith(encoding.slice(0, -1))
+    }
+
+    // Invalid: Lexicon can only specify "*/*" or "type/*" wildcards
+    if (encoding.includes('*')) {
       return false
     }
 
-    return mimeMatcher(mime)
+    return encoding === mime
   }
 }
 

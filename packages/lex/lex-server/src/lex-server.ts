@@ -1012,8 +1012,7 @@ async function getQueryInput<M extends Query>(
   if (
     request.body ||
     request.headers.has('content-type') ||
-    (request.headers.has('content-length') &&
-      request.headers.get('content-length') !== '0')
+    request.headers.has('content-length')
   ) {
     throw new LexError('InvalidRequest', 'GET requests must not have a body')
   }

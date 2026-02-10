@@ -28,7 +28,7 @@ export function getMain<T extends object>(ns: Main<T>): T {
  */
 export type BinaryData = Restricted<'Binary data'>
 
-export type InferMethodParams<M extends Query | Procedure | Subscription> =
+export type InferMethodParams<M extends Procedure | Query | Subscription> =
   M extends Procedure<any, infer TParams, any, any, any>
     ? InferOutput<TParams>
     : M extends Query<any, infer TParams, any, any>
@@ -38,7 +38,7 @@ export type InferMethodParams<M extends Query | Procedure | Subscription> =
         : never
 
 export type InferMethodInput<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
   B = BinaryData,
 > =
   M extends Procedure<any, any, infer TInput, any, any>
@@ -46,7 +46,7 @@ export type InferMethodInput<
     : undefined
 
 export type InferMethodInputBody<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
   B = BinaryData,
 > =
   M extends Procedure<any, any, infer TInput, any, any>
@@ -54,14 +54,14 @@ export type InferMethodInputBody<
     : undefined
 
 export type InferMethodInputEncoding<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
 > =
   M extends Procedure<any, any, infer TInput, any, any>
     ? InferPayloadEncoding<TInput>
     : undefined
 
 export type InferMethodOutput<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
   B = BinaryData,
 > =
   M extends Procedure<any, any, any, infer TOutput, any>
@@ -71,7 +71,7 @@ export type InferMethodOutput<
       : undefined
 
 export type InferMethodOutputBody<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
   B = BinaryData,
 > =
   M extends Procedure<any, any, any, infer TOutput, any>
@@ -81,7 +81,7 @@ export type InferMethodOutputBody<
       : undefined
 
 export type InferMethodOutputEncoding<
-  M extends Query | Procedure | Subscription,
+  M extends Procedure | Query | Subscription,
 > =
   M extends Procedure<any, any, any, infer TOutput, any>
     ? InferPayloadEncoding<TOutput>
@@ -89,12 +89,12 @@ export type InferMethodOutputEncoding<
       ? InferPayloadEncoding<TOutput>
       : undefined
 
-export type InferMethodMessage<M extends Query | Procedure | Subscription> =
+export type InferMethodMessage<M extends Procedure | Query | Subscription> =
   M extends Subscription<any, any, infer TMessage, any>
     ? InferOutput<TMessage>
     : undefined
 
-export type InferMethodError<M extends Query | Procedure | Subscription> =
+export type InferMethodError<M extends Procedure | Query | Subscription> =
   M extends {
     errors: readonly (infer E extends string)[]
   }
